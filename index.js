@@ -22,7 +22,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const coffeeCollection = client.db('coffeeDB').collection('coffees')
     const userCollection = client.db('coffeeDB').collection('users')
@@ -100,13 +100,9 @@ async function run() {
       const id = req.params.id
       const query = {_id: new ObjectId(id)}
       const result = await userCollection.deleteOne(query)
-      res.send(result)
+      res.send({message:'successfully delete',data:result})
 
     })
-
-
-
-
 
 
 
