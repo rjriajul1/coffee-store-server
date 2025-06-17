@@ -1,3 +1,4 @@
 node_modules
 .env
 .vercel
+coffee-store-auth-admin-service-key.json

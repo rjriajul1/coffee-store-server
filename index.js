@@ -2,6 +2,8 @@ const express = require("express");
 const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
+const admin = require("firebase-admin");
+// const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const port = process.env.PORT || 3000;
 
@@ -16,14 +18,50 @@ const client = new MongoClient(process.env.MONGODB_URI, {
     deprecationErrors: true,
   },
 });
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+const verifyJWT = async (req, res, next) => {
+  const token = req?.headers?.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    req.tokenEmail = decoded.email;
+    next()
+  } catch {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+  // jwt.verify(token, process.env.SECRET_KEY, (err, decoded) => {
+  //   if (err) {
+  //     return res.status(401).send({ message: "Unauthorized access" });
+  //   }
+  //   if (decoded) {
+  //     req.tokenEmail = decoded.email;
+  //     next();
+  //   }
+  // });
+};
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
-
     const coffeeCollection = client.db("coffeeDB").collection("coffees");
     const userCollection = client.db("coffeeDB").collection("users");
     const orderCollection = client.db("coffeeDB").collection("orders");
+
+    // app.post("/jwt", (req, res) => {
+    //   const email = req.body.email;
+    //   const token = jwt.sign({ email }, process.env.SECRET_KEY, {
+    //     expiresIn: "4d",
+    //   });
+    //   res.send(token);
+    // });
 
     app.get("/coffees", async (req, res) => {
       const cursor = coffeeCollection.find();
@@ -38,8 +76,12 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/coffeesByEmail", async (req, res) => {
+    app.get("/coffeesByEmail", verifyJWT, async (req, res) => {
+      const tokenEmail = req.tokenEmail;
       const email = req.query.email;
+      if (tokenEmail !== email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const filter = { email: email };
       const result = await coffeeCollection.find(filter).toArray();
       res.send(result);
@@ -121,16 +163,20 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/my-orders/:email", async(req, res) => {
+    app.get("/my-orders/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
+      const tokenEmail = req.tokenEmail;
+      if (tokenEmail !== email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const filter = {
-        userEmail: email
+        userEmail: email,
       };
-      const result = await orderCollection.find(filter).toArray()
-      for(const orders of result){
+      const result = await orderCollection.find(filter).toArray();
+      for (const orders of result) {
         const orderId = orders.orderId;
-        const query = {_id: new ObjectId(orderId)}
-        const order = await coffeeCollection.findOne(query)
+        const query = { _id: new ObjectId(orderId) };
+        const order = await coffeeCollection.findOne(query);
         orders.name = order?.name;
         orders.quantity = order?.quantity;
         orders.supplier = order?.supplier;
@@ -138,9 +184,8 @@ async function run() {
         orders.price = order?.price;
         orders.photo = order?.photo;
         orders.details = order?.details;
-
       }
-      res.send(result)
+      res.send(result);
     });
 
     // user api
